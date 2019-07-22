@@ -1,0 +1,22 @@
+{
+  "name": "battle-game-server",
+  "version": "1.0.0",
+  "description": "The server for a battle game.",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "test": "nodemon app.js"
+  },
+  "keywords": [
+    "Battle",
+    "Game",
+    "AI",
+    "Server"
+  ],
+  "author": "Bhagat",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.17.1",
+    "socket.io": "^2.2.0"
+  }
+}
