@@ -22,3 +22,13 @@ window.addEventListener("resize", () => {
     c.width = window.innerWidth;
     c.height = window.innerHeight;
 });
+
+x = 0;
+
+function animate() {
+    requestAnimationFrame(animate);
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.fillRect(++x, 0, 300, 300);
+}
+
+animate();

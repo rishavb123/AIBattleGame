@@ -1,7 +1,7 @@
 const express = require('express');
 const app = express();
 const port = 3000;
-const server = app.listen(port, () => console.log(`Example app listening on port ${port}!`));
+const server = app.listen(port, () => console.log(`Server listening on port ${port}!`));
 const io = require('socket.io')(server);
 
 io.on('connection', function (socket) {
