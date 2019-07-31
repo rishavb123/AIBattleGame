@@ -1,12 +1,22 @@
 const c = document.getElementById("application");
 const ctx = c.getContext('2d');
 
-c.width = window.innerWidth;
-c.height = window.innerHeight;
+if(window.innerWidth > window.innerHeight) {
+    c.width = window.innerHeight;
+    c.height = window.innerHeight;
+} else {
+    c.width = window.innerWidth;
+    c.height = window.innerWidth;
+}
 
 window.addEventListener("resize", () => {
-    c.width = window.innerWidth;
-    c.height = window.innerHeight;
+    if(window.innerWidth > window.innerHeight) {
+        c.width = window.innerHeight;
+        c.height = window.innerHeight;
+    } else {
+        c.width = window.innerWidth;
+        c.height = window.innerWidth;
+    }
 });
 
 class GameObject {
@@ -20,25 +30,26 @@ class GameObject {
     }
 
     outOfBounds() {
-        return this.x > c.width || this.y > c.height || this.x + this.w < 0 || this.y + this.h < 0;
+        return this.x > 100 || this.y > 100 || this.x + this.w < 0 || this.y + this.h < 0;
     }
 
     draw() {
         ctx.fillStyle = this.color;
-        ctx.fillRect(this.x, this.y, this.w, this.h);
+        ctx.fillRect(this.x / 100 * c.width, this.y / 100 * c.height , this.w / 100 * c.width, this.h / 100 * c.height);
     }
 
 }
 
 class Player extends GameObject {
-    constructor(x, y, color) {
+    constructor(x, y, w, h, color) {
         super();
         this.x = x;
         this.y = y;
-        this.w = 50;
-        this.h = 50;
+        this.w = w;
+        this.h = h;
         this.dx = 0;
         this.dy = 0;
+        this.action = -1;
         this.health = 100;
         this.rgb_color = color;
         this.color = `rgba(${color.red}, ${color.blue}, ${color.green}, 1)`
@@ -62,20 +73,42 @@ class Player extends GameObject {
     }
 
     shoot() {
-        add(new Bullet(this.x + this.w / 2 - 12.5, this.y + this.h / 2 - 12.5, (this.dx == 0 && this.dy == 0) ? 30 : 3 * this.dx, 3 * this.dy, this));
+        add(new Bullet(this.x + this.w / 4, this.y + this.h / 4, this.w / 2, this.h / 2, (this.dx == 0 && this.dy == 0) ? 3 : 3 * this.dx, 3 * this.dy, this));
+    }
+
+    set_action(action) {
+        this.action = action;
+        switch (action) {
+            case LEFT:
+                player.dx = -1;
+                player.dy = 0;
+                break;
+            case UP:
+                player.dy = -1;
+                player.dx = 0;
+                break;
+            case RIGHT:
+                player.dx = 1;
+                player.dy = 0;
+                break;
+            case DOWN:
+                player.dy = 1;
+                player.dx = 0;
+                break;
+        }
     }
 
 }
 
 class Bullet extends GameObject {
-    constructor(x, y, dx, dy, sender) {
+    constructor(x, y, w, h, dx, dy, sender) {
         super();
         this.x = x;
         this.y = y;
         this.dx = dx;
         this.dy = dy;
-        this.w = 25;
-        this.h = 25;
+        this.w = w;
+        this.h = h;
         this.sender = sender;
         this.color = 'white';
     }
@@ -88,27 +121,39 @@ class Bullet extends GameObject {
 
 }
 
-class Model {
+class HealthBar extends GameObject {
+    constructor(x, y, w, h, player) {
+        super();
+        this.x = x;
+        this.y = y;
+        this.total_w = w;
+        this.w = w;
+        this.h = h;
+        this.player = player;
+        this.dx = 0;
+        this.dy = 0;
+    }
 
+    update() {
+        this.w = this.total_w * this.player.health / 100;
+        ctx.fillStyle = `rgb(${255 - 2.55 * this.player.health}, ${2.55 * this.player.health}, 0)`;
+        super.update();
+    }
 }
 
 window.addEventListener("keydown", (e) => {
     switch (e.keyCode) {
         case 37:
-            player.dx = -10;
-            player.dy = 0;
+            player.set_action(LEFT);
             break;
         case 38:
-            player.dy = -10;
-            player.dx = 0;
+            player.set_action(UP);
             break;
         case 39:
-            player.dx = 10;
-            player.dy = 0;
+            player.set_action(RIGHT);
             break;
         case 40:
-            player.dy = 10;
-            player.dx = 0;
+            player.set_action(DOWN);
             break;
         case 32:
             if(!shooting) {
@@ -116,47 +161,55 @@ window.addEventListener("keydown", (e) => {
                 shooting = true;
             }
             break;
-        case 65:
-            player.dx = -10;
-            player.dy = 0;
-            break;
-        case 87:
-            player.dy = -10;
-            player.dx = 0;
-            break;
-        case 68:
-            player.dx = 10;
-            player.dy = 0;
-            break;
-        case 83:
-            player.dy = 10;
-            player.dx = 0;
-            break;
     }
 });
 
-window.addEventListener("keyup", (e) => {
+window.addEventListener("keyup", async (e) => {
     switch(e.keyCode) {
         case 32:
             shooting = false;
-            console.log(get_pixels());
+            break;
+        case 90:
+            const temp = player;
+            player = enemy;
+            enemy = temp;
+            enemy.dx = 0;
+            enemy.dy = 0;
+            break;
+        case 88:
+            running = false;
+            train();
             break;
     }
 });
 
+const LEFT = 0;
+const RIGHT = 1;
+const UP = 2;
+const DOWN = 3;
+
+let running = true;
+let state = [];
+
+const model = create_model();
+
 let shooting = false;
-let player = new Player(0, 0, {
+let player = new Player(0, 0, 10, 10, {
     red: '0',
-    green: '0',
+    green: '255',
     blue: '255'
 });
-let enemy = new Player(100, 100, {
+let enemy = new Player(10, 10, 10, 10, {
     red: '255',
     green: '0',
     blue: '0'
 });
-let gameObjects = [player, enemy];
+let pHealthBar = new HealthBar(2, 2, 30, 5, player);
+let eHealthBar = new HealthBar(68, 2, 30, 5, enemy);
+let gameObjects = [player, pHealthBar];
 let i = 0;
+let xs = []
+let ys = [];
 
 function remove(obj) {
     gameObjects.splice(gameObjects.indexOf(obj), 1);
@@ -168,48 +221,84 @@ function add(obj) {
     gameObjects.push(obj);
 }
 
-function get_state() {
-    let state = [enemy.x, enemy.y, enemy.dx, enemy.dy, enemy.health, player.x, player.y, player.health];
-    let actions = [player.dx, player.dy];
-    return [state, actions];
+async function train() {
+    running = false;
+    const xDataset = tf.data.array(xs);
+    const yDataset = tf.data.array(ys);
+    const xyDataset = tf.data.zip({xs: xDataset, ys: yDataset})
+        .batch(4)
+        .shuffle(4);
+    await model.fitDataset(xyDataset, {
+        epochs: 10,
+        callbacks: {onEpochEnd: (epoch, logs) => console.log(logs.loss)}
+    });
+    await model.save('downloads://model-1');
 }
 
-function get_pixels() {
+async function get_pixels() {
     const imageData = ctx.getImageData(0, 0, c.width, c.height);
-    let imageMatrix = [];
-
-    const pixels = imageData.data;
-    const w = imageData.width;
-    const h = imageData.height;
-
-    for(let x = 0; x < w; x++) {
-        imageMatrix.push([]);
-        for(let y = 0; y < h; y++)
-            imageMatrix[x].push(0);
-    }
-
-    for (let i = 0; i < w * h; i++) {
-
-        const r = pixels[i*4] / 255.0;
-        const g = pixels[i*4+1] / 255.0;
-        const b = pixels[i*4+2] / 255.0;
-        // const a = pixels[i*4+3];
-
-        const p = .2126 * r + .7152 * g + .0722 * b;
-
-        const y = parseInt(i / w, 10);
-        const x = i - y * w;
-        console.log(p);
-        imageData[x][y] = p;
-
-    }
-    return imageData;
+    const imageTensor = tf.image.resizeNearestNeighbor(tf.browser.fromPixels(imageData), [40, 40]);
+    let = imageMatrix = await imageTensor.array();
+    imageTensor.dispose();
+    imageMatrix = imageMatrix.map(row => row.map(p => (.2126 * p[0] + .7152 * p[1] + .0722 * p[2]) / 255));
+    imageMatrix = tf.tensor(imageMatrix);
+    return imageMatrix;
 }
 
-function get_enemy_state() {
-    let state = [player.x, player.y, player.dx, player.dy, player.health, enemy.x, enemy.y, enemy.health];
-    let actions = [enemy.dx, enemy.dy];
-    return [state, actions];
+async function update_state() {
+    state.push(await get_pixels());
+    if(state.length > 4)
+        state.shift().dispose();
+}
+
+function get_state() {
+    return tf.stack(state, 2);
+}
+
+function create_model() {
+    const model = tf.sequential();
+  
+    const IMAGE_WIDTH = 40;
+    const IMAGE_HEIGHT = 40;
+    const IMAGE_CHANNELS = 4; 
+
+    const NUM_OUTPUT_CLASSES = 4;
+    
+    model.add(tf.layers.conv2d({
+        inputShape: [IMAGE_WIDTH, IMAGE_HEIGHT, IMAGE_CHANNELS],
+        kernelSize: 7,
+        filters: 8,
+        strides: 3,
+        activation: 'relu',
+        kernelInitializer: 'varianceScaling'
+    }));
+    model.add(tf.layers.maxPooling2d({poolSize: [2, 2], strides: [2, 2]}));
+
+    model.add(tf.layers.conv2d({
+        kernelSize: 7,
+        filters: 16,
+        strides: 3,
+        activation: 'relu',
+        kernelInitializer: 'varianceScaling'
+    }));
+    model.add(tf.layers.maxPooling2d({poolSize: [2, 2], strides: [2, 2]}));
+
+    model.add(tf.layers.flatten());
+
+    model.add(tf.layers.dense({
+        units: NUM_OUTPUT_CLASSES,
+        kernelInitializer: 'varianceScaling',
+        activation: 'softmax'
+    }));
+
+    const optimizer = tf.train.adam();
+    model.compile({
+        optimizer: optimizer,
+        loss: 'categoricalCrossentropy',
+        metrics: ['accuracy']
+    });
+    // model.save('downloads://random-model');
+    return model;
 }
 
 function send_request() {
@@ -225,7 +314,8 @@ function send_request() {
     }
 }
 
-function animate() {
+async function animate() {
+    if(running)
     requestAnimationFrame(animate);
     ctx.clearRect(0, 0, c.width, c.height);
     for (i = 0; i < gameObjects.length; i++) {
@@ -239,15 +329,11 @@ function animate() {
             }
         }
     }
-
-    // send_request();
-
-
-    ctx.fillStyle = `rgb(${255 - 2.55 * player.health}, ${2.55 * player.health}, 0)`;
-    ctx.fillRect(10, 10, 4 * player.health, 25);
-
-    ctx.fillStyle = `rgb(${2.55 * enemy.health}, ${255 - 2.55 * enemy.health}, 0)`;
-    ctx.fillRect(c.width - 410, 10, 4 * enemy.health, 25);
+    await update_state();
+    let arr = [0, 0, 0, 0];
+    arr[player.action] = 1
+    xs.push(get_state());
+    ys.push(arr);
 }
 
 animate();
