@@ -1,0 +1,23 @@
+state structure:
+
+player x
+player y
+player dx
+player dy
+player health
+enemy x
+enemy y
+enemy health
+player bullet 1 --> x, y, dx, dy
+player bullet 2
+player bullet 3
+player bullet 4
+player bullet 5
+
+-->
+
+enemy action 0 (LEFT)
+enemy action 1 (UP)
+enemy action 2 (RIGHT)
+enemy action 3 (DOWN)
+enemy action 4 (SHOOT)
