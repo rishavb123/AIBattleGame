@@ -38,6 +38,10 @@ class GameObject {
         ctx.fillRect(this.x / 100 * c.width, this.y / 100 * c.height , this.w / 100 * c.width, this.h / 100 * c.height);
     }
 
+    remove() {
+        remove(this);
+    }
+
 }
 
 class Player extends GameObject {
@@ -62,6 +66,11 @@ class Player extends GameObject {
             obj.remove();
             this.health -= 10;
         }
+        if (obj instanceof Enemy) {
+            hitFeatures.unshift(obj.get_features());
+            obj.remove();
+            this.health -= 5;
+        }
     }
 
     update() {
@@ -69,8 +78,6 @@ class Player extends GameObject {
         super.update();
         if(this.outOfBounds())
             this.health--;
-        if (this.health <= 0)
-            remove(this);
     }
 
     shoot() {
@@ -136,6 +143,102 @@ class Bullet extends GameObject {
 
 }
 
+class Enemy extends GameObject{
+    constructor(x, y, w, h, maxDx, maxDy, alpha) {
+        super();       
+
+        if(Math.random() > 0.9)
+            w += 10*randGauss();
+        if(Math.random() > 0.9)
+            h += 10*randGauss();
+        if(Math.random() > 0.9)
+            maxDx += 0.5 * randGauss();
+        if(Math.random() > 0.9)
+            maxDy += 0.5 * randGauss();
+        if(Math.random() > 0.9)
+            alpha += 0.5 * randGauss();
+
+        if(w > Enemy.maxWidth)
+            w = Enemy.maxWidth;
+        if(w < Enemy.minWidth)
+            w = Enemy.minWidth;
+        if(h > Enemy.maxHeight)
+            h = Enemy.maxHeight;
+        if(h < Enemy.minHeight)
+            h = Enemy.minHeight;
+        if(maxDx > Enemy.maxSpeed)
+            maxDx = Enemy.maxSpeed;
+        if(maxDx < Enemy.minSpeed)
+            maxDx = Enemy.minSpeed;
+        if(maxDy > Enemy.maxSpeed)
+            maxDy = Enemy.maxSpeed;
+        if(maxDy < Enemy.minSpeed)
+            maxDy = Enemy.minSpeed;
+        if(alpha > Enemy.maxAlpha)
+            alpha = Enemy.maxAlpha;
+        if(alpha < Enemy.minAlpha)
+            alpha = Enemy.minAlpha;        
+
+        this.x = x;
+        this.y = y;
+        this.maxDx = maxDx;
+        this.maxDy = maxDy;
+        this.dx = 0;
+        this.dy = 0;
+        this.w = w;
+        this.h = h;
+        this.health = 100;
+        this.alpha = alpha;
+        this.color = `rgba(255,${255 * alpha},255,${alpha})`;
+    }
+
+    update() {
+        if(this.x < player.x)
+            this.dx = this.maxDx;
+        else 
+            this.dx = -this.maxDx;
+        if(this.y < player.y)
+            this.dy = this.maxDy;
+        else 
+            this.dy = -this.maxDy;
+        super.update();
+        this.health -= 0.1;
+        if (this.outOfBounds() || this.health <= 0) {
+            this.remove();
+        }
+    }
+
+    get_features() {
+        return [this.w, this.h, this.maxDx, this.maxDy, this.alpha];
+    }
+
+    collide(obj) {
+        if (obj instanceof Bullet) {
+            obj.sender.health += obj.sender.health < 97.5? 2.5 : 0;
+            obj.remove();
+            this.health -= 100;
+        }
+    }
+
+    remove() {
+        enemies.splice(enemies.indexOf(this), 1);
+        remove(this);
+    }
+
+}
+
+Enemy.minSpeed = 0.1;
+Enemy.maxSpeed = 2;
+
+Enemy.minAlpha = 0.2;
+Enemy.maxAlpha = 1;
+
+Enemy.minWidth = 3;
+Enemy.maxWidth = 25;
+
+Enemy.minHeight = 4;
+Enemy.maxHeight = 25;
+
 class HealthBar extends GameObject {
     constructor(x, y, w, h, player) {
         super();
@@ -177,24 +280,24 @@ window.addEventListener("keydown", (e) => {
             }
             break;
 
-        case 65:
-            enemy.set_action(LEFT);
-            break;
-        case 87:
-            enemy.set_action(UP);
-            break;
-        case 68:
-            enemy.set_action(RIGHT);
-            break;
-        case 83:
-            enemy.set_action(DOWN);
-            break;
-        case 16:
-            if(!eShooting) {
-                enemy.shoot();
-                eShooting = true;
-            }
-            break;
+        // case 65:
+        //     enemy.set_action(LEFT);
+        //     break;
+        // case 87:
+        //     enemy.set_action(UP);
+        //     break;
+        // case 68:
+        //     enemy.set_action(RIGHT);
+        //     break;
+        // case 83:
+        //     enemy.set_action(DOWN);
+        //     break;
+        // case 16:
+        //     if(!eShooting) {
+        //         enemy.shoot();
+        //         eShooting = true;
+        //     }
+        //     break;
     }
 });
 
@@ -240,24 +343,42 @@ let agentPlaying = false;
 const model = create_model();
 
 let shooting = false;
-let player = new Player(0, 0, 10, 10, {
+let player = new Player(0, 0, 5, 5, {
     red: '0',
     green: '255',
     blue: '255'
 });
-let eShooting = false;
-let enemy = new Player(10, 10, 10, 10, {
+// let eShooting = false;
+let enemy = new Player(10, 10, 5, 5, {
     red: '255',
     green: '0',
     blue: '0'
 });
+let t = 0;
+
+const maxEnemies = 10;
 
 Bullet.defaultBullet = new Bullet(-1, -1, 0, 0, 0, 0);
+Enemy.defaultEnemy = new Enemy(-1, -1, 0, 0, 0, 0, 0);
+Enemy.add = (enemy) => {
+    if(enemies.length < maxEnemies) {
+        enemies.push(enemy)
+        add(enemy)
+    }
+    else
+        delete enemy;
+}
+Enemy.get = (index) => {
+    return enemies[index] || Enemy.defaultEnemy;
+}
 
 let pHealthBar = new HealthBar(2, 2, 30, 5, player);
-let eHealthBar = new HealthBar(68, 2, 30, 5, enemy);
-let gameObjects = [player, pHealthBar]; //, enemy, eHealthBar];
+// let eHealthBar = new HealthBar(68, 2, 30, 5, enemy);
+let gameObjects = [player, pHealthBar];
+let enemies = [];
+let hitFeatures = [[5, 5, 0.8, 0.8, 0.8]];
 let i = 0;
+let numGenerating = 1;
 
 function remove(obj) {
     gameObjects.splice(gameObjects.indexOf(obj), 1);
@@ -271,30 +392,49 @@ function add(obj) {
 }
 
 function get_state() {
-    let state = [player.x / 100, player.y / 100, player.dx / 100, player.dy / 100, player.health / 100, enemy.x / 100, enemy.y / 100, enemy.health / 100];
+    let state = [player.x / 100, player.y / 100, player.health / 100];
     for(let i = 0; i < 5; i++)
     {
         let bullet = player.getBullet(i);
         state.push(bullet.x / 100, bullet.y / 100, bullet.dx / 100, bullet.dy / 100);
     }
+    for(let i = 0; i < maxEnemies; i++)
+    {
+        let enemy = Enemy.get(i);
+        state.push(enemy.x, enemy.y, enemy.health);
+        state = state.concat(enemy.get_features());
+    }
     return state;
 }
 
-function get_opposite_state() {
-    let state = [enemy.x / 100, enemy.y / 100, enemy.dx / 100, enemy.dy / 100, enemy.health / 100, player.x / 100, player.y / 100, player.health / 100];
-    for(let i = 0; i < 5; i++)
-    {
-        let bullet = enemy.getBullet(i);
-        state.push(bullet.x / 100, bullet.y / 100, bullet.dx / 100, bullet.dy / 100);
+function create_multiplier() {
+    let num = hitFeatures.length;
+    let temp = [];
+    let multiplierArr = [];
+    let sum = 0;
+    for(let i = 0; i < num; i++) {
+        let multiple = Math.pow(0.8, i);
+        temp.push(multiple);
+        sum += multiple;
     }
-    return state;
+    for(let i = 0; i < num; i++) 
+        multiplierArr.push(temp[i] / sum);
+
+    return tf.tensor([multiplierArr]);
+}
+
+function randGauss() {
+    let u = 0, v = 0;
+    while(u === 0) u = Math.random();
+    while(v === 0) v = Math.random();
+    return Math.sqrt( -2.0 * Math.log( u ) ) * Math.cos( 2.0 * Math.PI * v );
 }
 
 function create_model() {
     const model = tf.sequential();
   
-    const INPUT_NODES = 28;
-    const HIDDEN_LAYERS = [30, 30, 30];
+    const INPUT_NODES = 103;
+    const HIDDEN_LAYERS = [70, 50, 50];
     const NUM_OUTPUT_CLASSES = 5;
 
     model.add(tf.layers.dense({
@@ -341,11 +481,24 @@ async function train(xs, ys) {
 }
 
 function animate() {
+    t++;
     if(running)
-    requestAnimationFrame(animate);
+        requestAnimationFrame(animate);
     ctx.clearRect(0, 0, c.width, c.height);
+    if(t%300 == 0) {
+        // numGenerating += 0.4;
+        let [w, h, dx, dy, alpha] = tf.matMul(create_multiplier(), tf.tensor(hitFeatures)).dataSync();
+        for(let j = 0; j < numGenerating; j++) {
+            const enemy = new Enemy(Math.random() > 0.5? 0 : 100 - w, Math.random() * 100, w, h, dx, dy, alpha);
+            Enemy.add(enemy);
+        }
+    }
     if(agentPlaying) {
-        player.set_action(model.predict(tf.tensor([get_opposite_state()])).argMax(1).dataSync()[0]);
+        const output = model.predict(tf.tensor([get_state()])).dataSync();
+        player.set_action(tf.tensor(output.slice(0, 4)).argMax().dataSync()[0]);
+        console.log(output[4]);
+        if(output[4] > 0.25)
+            player.shoot();
     }
     for (i = 0; i < gameObjects.length; i++) {
         const obj = gameObjects[i];
@@ -359,12 +512,25 @@ function animate() {
         }
     }
     if(player.action >= 0) {
-        xs.push(get_opposite_state());
-        let y = [0, 0, 0, 0, 0];
+        xs.push(get_state());
+        let y = [0, 0, 0, 0, shooting? 1: 0];
         y[player.action] = 1;
         ys.push(y);
     }
     
+    if(player.health < 0) {
+        console.log("game over");
+        for(let obj of gameObjects)
+            obj.remove();
+        player = new Player(0, 0, 5, 5, {
+            red: '0',
+            green: '255',
+            blue: '255'
+        });
+        pHealthBar = new HealthBar(2, 2, 30, 5, player);
+        gameObjects = [player, pHealthBar];
+    }
+
 }
 
 animate();
