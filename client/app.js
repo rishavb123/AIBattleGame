@@ -227,6 +227,137 @@ class Enemy extends GameObject{
 
 }
 
+
+class DenseLayer {
+    constructor(M1, M2, f=tf.tanh) {
+        this.M1 = M1;
+        this.M2 = M2;
+        this.W = tf.variable(tf.randomNormal([M1, M2]));
+        this.b = tf.variable(tf.zeros([M2], 'float32'));
+        this.f = f;
+    }
+
+    getParams() {
+        return [this.W, this.b];
+    }
+
+    setParams(params) {
+        this.W = params[0].clone();
+        this.b = params[1].clone();
+        return this;
+    }
+
+    clone() {
+        return new DenseLayer(this.M1, this.M2).setParams(this.getParams());
+    }
+
+    forward(X) {
+        return this.f(tf.matMul(X, this.W) + this.b);
+    }
+}
+
+class DQN {
+
+    constructor(inputNodes, hiddenLayers, outputNodes, gamma=0.9, eps=0.1, minExperience=100, maxExperience=10000, batchSize=32) {
+        this.layers = [];
+        this.gamma = gamma;
+        this.eps = eps;
+        this.minExperience = minExperience;
+        this.maxExperience = maxExperience;
+        this.batchSize = batchSize;
+
+        let M1 = inputNodes;
+        for(let M2 of hiddenLayers) {
+            this.layers.push(new DenseLayer(M1, M2));
+            M1 = M2;
+        }
+        this.layers.push(new DenseLayer(M1, outputNodes));
+        this.optimizer = tf.train.adam();
+        this.experience = {
+            s: [],
+            a: [],
+            r: [],
+            s2: [],
+            done: []
+        };
+    }
+
+    predict(X) {
+        Z = X;
+        for(let layer of this.layers) {
+            Z = layer.forward(X);
+        }
+        return Z;
+    }
+
+    addExperience(s, a, r, s2, done) {
+        if(this.experience.s.length >= this.maxExperience) {
+            this.experience.s.shift();
+            this.experience.a.shift();
+            this.experience.r.shift();
+            this.experience.s2.shift();
+            this.experience.done.shift();
+        }
+        this.experience.s.push(s);
+        this.experience.a.push(a);
+        this.experience.r.push(r);
+        this.experience.s2.push(s2);
+        this.experience.done.push(done);
+    }
+
+    train(targetNetwork) {
+        if(this.experience.s.length < this.minExperience)
+            return;
+
+        let idx = [];
+        let states = [];
+        let actions = [];
+        let rewards = [];
+        let next_states = [];
+        let dones = [];
+        for(let i = 0; i < this.batchSize; i++) {
+            index = Math.floor(Math.random() * this.experience.s.length)
+            while(index in idx)
+                index = Math.floor(Math.random() * this.experience.s.length)
+            idx.push(index);
+            states.push(this.experience.s[index]);
+            actions.push(this.experience.a[index]);
+            rewards.push(this.experience.r[index]);
+            next_states.push(this.experience.s2[index]);
+            dones.push(this.experience.done[index]);
+        }
+
+
+        let next_Q = tf.max(targetNetwork.predict(tf.tensor(next_states)), 1)
+
+        Y_hat = predict(states);
+
+        let targets = [];
+
+        for(let i = 0; i < rewards.length; i++) {
+            if(dones[i])
+                targets.push(rewards[i]);
+            else
+                targets.push(rewards[i] + this.gamma * next_Q[i]);
+        }
+        this.optimizer.minimize(() => tf.losses.meanSquaredError(targets, ));
+
+    }
+
+    copyTo(toNetwork) {
+        for(let i = 0; i < this.layers.length; i++)
+            toNetwork.layers[i].setParams(this.layers[i].getParams());
+    }
+
+    sampleAction(x) {
+        if(Math.random() < this.eps)
+            return Math.floor(Math.random() * 4);
+        else 
+            return tf.argMax(this.predict(tf.tensor([x]))[0])
+    }
+
+}
+
 Enemy.minSpeed = 0.1;
 Enemy.maxSpeed = 2;
 
@@ -279,25 +410,6 @@ window.addEventListener("keydown", (e) => {
                 shooting = true;
             }
             break;
-
-        // case 65:
-        //     enemy.set_action(LEFT);
-        //     break;
-        // case 87:
-        //     enemy.set_action(UP);
-        //     break;
-        // case 68:
-        //     enemy.set_action(RIGHT);
-        //     break;
-        // case 83:
-        //     enemy.set_action(DOWN);
-        //     break;
-        // case 16:
-        //     if(!eShooting) {
-        //         enemy.shoot();
-        //         eShooting = true;
-        //     }
-        //     break;
     }
 });
 
@@ -306,18 +418,8 @@ window.addEventListener("keyup", async (e) => {
         case 32:
             shooting = false;
             break;
-        case 16:
-            eShooting = false;
-            break;
         case 80:
             agentPlaying = !agentPlaying;
-            break;
-        case 90:
-            const temp = player;
-            player = enemy;
-            enemy = temp;
-            enemy.dx = 0;
-            enemy.dy = 0;
             break;
         case 88:
             running = !running;
@@ -334,25 +436,23 @@ const RIGHT = 1;
 const UP = 2;
 const DOWN = 3;
 
+const INPUT_NODES = 103;
+const HIDDEN_LAYERS = [70, 50, 50];
+const NUM_OUTPUT_CLASSES = 4;
+
 let xs = [];
 let ys = [];
 
 let running = true;
 let agentPlaying = false;
 
-const model = create_model();
+const model = new DQN(INPUT_NODES, HIDDEN_LAYERS, NUM_OUTPUT_CLASSES);
 
 let shooting = false;
 let player = new Player(0, 0, 5, 5, {
     red: '0',
     green: '255',
     blue: '255'
-});
-// let eShooting = false;
-let enemy = new Player(10, 10, 5, 5, {
-    red: '255',
-    green: '0',
-    blue: '0'
 });
 let t = 0;
 
@@ -373,12 +473,11 @@ Enemy.get = (index) => {
 }
 
 let pHealthBar = new HealthBar(2, 2, 30, 5, player);
-// let eHealthBar = new HealthBar(68, 2, 30, 5, enemy);
 let gameObjects = [player, pHealthBar];
 let enemies = [];
 let hitFeatures = [[5, 5, 0.8, 0.8, 0.8]];
 let i = 0;
-let numGenerating = 1;
+let numGenerating = 0;
 
 function remove(obj) {
     gameObjects.splice(gameObjects.indexOf(obj), 1);
@@ -407,6 +506,10 @@ function get_state() {
     return state;
 }
 
+function reward() {
+    return player.health / 100;
+}
+
 function create_multiplier() {
     let num = hitFeatures.length;
     let temp = [];
@@ -432,10 +535,6 @@ function randGauss() {
 
 function create_model() {
     const model = tf.sequential();
-  
-    const INPUT_NODES = 103;
-    const HIDDEN_LAYERS = [70, 50, 50];
-    const NUM_OUTPUT_CLASSES = 5;
 
     model.add(tf.layers.dense({
         inputDim: INPUT_NODES,
@@ -486,7 +585,7 @@ function animate() {
         requestAnimationFrame(animate);
     ctx.clearRect(0, 0, c.width, c.height);
     if(t%300 == 0) {
-        // numGenerating += 0.4;
+        numGenerating += 0.2;
         let [w, h, dx, dy, alpha] = tf.matMul(create_multiplier(), tf.tensor(hitFeatures)).dataSync();
         for(let j = 0; j < numGenerating; j++) {
             const enemy = new Enemy(Math.random() > 0.5? 0 : 100 - w, Math.random() * 100, w, h, dx, dy, alpha);
