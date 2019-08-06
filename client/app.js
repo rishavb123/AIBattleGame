@@ -318,9 +318,9 @@ class DQN {
         let next_states = [];
         let dones = [];
         for(let i = 0; i < this.batchSize; i++) {
-            let index = Math.floor(Math.random() * this.experience.s.length)
+            let index = Math.floor(Math.random() * this.experience.s.length);
             while(index in idx)
-                index = Math.floor(Math.random() * this.experience.s.length)
+                index = Math.floor(Math.random() * this.experience.s.length);
             idx.push(index);
             states.push(this.experience.s[index]);
             actions.push(this.experience.a[index]);
