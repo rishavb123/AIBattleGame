@@ -33,9 +33,11 @@ class GameObject {
         return this.x > 100 || this.y > 100 || this.x + this.w < 0 || this.y + this.h < 0;
     }
 
-    draw() {
-        ctx.fillStyle = this.color;
-        ctx.fillRect(this.x / 100 * c.width, this.y / 100 * c.height , this.w / 100 * c.width, this.h / 100 * c.height);
+    draw(draw=true) {
+        if(draw) {
+            ctx.fillStyle = this.color;
+            ctx.fillRect(this.x / 100 * c.width, this.y / 100 * c.height , this.w / 100 * c.width, this.h / 100 * c.height);
+        }
     }
 
     remove() {
@@ -69,13 +71,13 @@ class Player extends GameObject {
         if (obj instanceof Enemy) {
             hitFeatures.unshift(obj.get_features());
             obj.remove();
-            this.health -= 5;
+            this.health -= 10;
         }
     }
 
-    update() {
+    update(draw=true) {
         this.color = `rgba(${this.rgb_color.red}, ${this.rgb_color.green}, ${this.rgb_color.blue}, ${this.health / 100})`
-        super.update();
+        super.update(draw);
         if(this.outOfBounds())
             this.health--;
     }
@@ -129,8 +131,8 @@ class Bullet extends GameObject {
         this.color = 'white';
     }
 
-    update() {
-        super.update();
+    update(draw=true) {
+        super.update(draw);
         if (this.outOfBounds()) {
             this.remove();
         }
@@ -192,7 +194,7 @@ class Enemy extends GameObject{
         this.color = `rgba(255,${255 * alpha},255,${alpha})`;
     }
 
-    update() {
+    update(draw=true) {
         if(this.x < player.x)
             this.dx = this.maxDx;
         else 
@@ -201,7 +203,7 @@ class Enemy extends GameObject{
             this.dy = this.maxDy;
         else 
             this.dy = -this.maxDy;
-        super.update();
+        super.update(draw);
         this.health -= 0.1;
         if (this.outOfBounds() || this.health <= 0) {
             this.remove();
@@ -252,7 +254,7 @@ class DenseLayer {
     }
 
     forward(X) {
-        return this.f(tf.matMul(X, this.W) + this.b);
+        return this.f(tf.add(tf.matMul(X, this.W), this.b));
     }
 }
 
@@ -283,9 +285,9 @@ class DQN {
     }
 
     predict(X) {
-        Z = X;
+        let Z = X;
         for(let layer of this.layers) {
-            Z = layer.forward(X);
+            Z = layer.forward(Z);
         }
         return Z;
     }
@@ -316,7 +318,7 @@ class DQN {
         let next_states = [];
         let dones = [];
         for(let i = 0; i < this.batchSize; i++) {
-            index = Math.floor(Math.random() * this.experience.s.length)
+            let index = Math.floor(Math.random() * this.experience.s.length)
             while(index in idx)
                 index = Math.floor(Math.random() * this.experience.s.length)
             idx.push(index);
@@ -327,21 +329,24 @@ class DQN {
             dones.push(this.experience.done[index]);
         }
 
-
         let next_Q = tf.max(targetNetwork.predict(tf.tensor(next_states)), 1)
-
-        Y_hat = predict(states);
-
+        
         let targets = [];
-
+        
         for(let i = 0; i < rewards.length; i++) {
             if(dones[i])
                 targets.push(rewards[i]);
             else
                 targets.push(rewards[i] + this.gamma * next_Q[i]);
         }
-        this.optimizer.minimize(() => tf.losses.meanSquaredError(targets, ));
+        this.optimizer.minimize(() => tf.losses.meanSquaredError(targets, tf.max(this.predict(states), 1)), false, this.getParams());
 
+    }
+
+    getParams() {
+        let params = [];
+        for(let i = 0; i < this.layers.length; i++)
+            params = params.concat(this.layers[i].getParams());
     }
 
     copyTo(toNetwork) {
@@ -353,10 +358,12 @@ class DQN {
         if(Math.random() < this.eps)
             return Math.floor(Math.random() * 4);
         else 
-            return tf.argMax(this.predict(tf.tensor([x]))[0])
+            return tf.argMax(this.predict(tf.tensor([x])), 1)
     }
 
 }
+
+
 
 Enemy.minSpeed = 0.1;
 Enemy.maxSpeed = 2;
@@ -426,7 +433,7 @@ window.addEventListener("keyup", async (e) => {
             if(running) animate();                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  
             break;
         case 84:
-            await train(xs, ys);
+            train();
             break;
     }
 });
@@ -440,13 +447,13 @@ const INPUT_NODES = 103;
 const HIDDEN_LAYERS = [70, 50, 50];
 const NUM_OUTPUT_CLASSES = 4;
 
-let xs = [];
-let ys = [];
+const copyPeriod = 50;
 
 let running = true;
 let agentPlaying = false;
 
 const model = new DQN(INPUT_NODES, HIDDEN_LAYERS, NUM_OUTPUT_CLASSES);
+const tmodel = new DQN(INPUT_NODES, HIDDEN_LAYERS, NUM_OUTPUT_CLASSES);
 
 let shooting = false;
 let player = new Player(0, 0, 5, 5, {
@@ -533,50 +540,90 @@ function randGauss() {
     return Math.sqrt( -2.0 * Math.log( u ) ) * Math.cos( 2.0 * Math.PI * v );
 }
 
-function create_model() {
-    const model = tf.sequential();
-
-    model.add(tf.layers.dense({
-        inputDim: INPUT_NODES,
-        units: INPUT_NODES,
-        kernelInitializer: 'varianceScaling',
-        activation: 'tanh'
-    }));
-
-    for(let NUM_OF_HIDDEN_NODES of HIDDEN_LAYERS)
-        model.add(tf.layers.dense({
-            units: NUM_OF_HIDDEN_NODES,
-            kernelInitializer: 'varianceScaling',
-            activation: 'relu'
-        }));
-
-    model.add(tf.layers.dense({
-        units: NUM_OUTPUT_CLASSES,
-        kernelInitializer: 'varianceScaling',
-        activation: 'softmax'
-    }));
-
-    const optimizer = tf.train.adam();
-    model.compile({
-        optimizer: optimizer,
-        loss: 'categoricalCrossentropy',
-        metrics: ['accuracy']
-    });
-    return model;
+function train(N = 500) {
+    totalrewards = [];
+    for(let n = 0; n < N; n++) {
+        model.eps = 1 / Math.sqrt(n + 1);
+        totalReward = playOne();
+        totalrewards.push(totalReward);
+        if(n%100 == 0)
+            console.log("episode:", n, "\n\ttotal reward:", totalReward, "\n\teps:", model.eps);
+    }
+    reset();
+    alert("Done Training!");
+    return totalRewards;
 }
 
-async function train(xs, ys) {
-    console.log("Training . . .");
-    const xDataset = tf.data.array(xs);
-    const yDataset = tf.data.array(ys);
-    const xyDataset = tf.data.zip({xs: xDataset, ys: yDataset})
-        .batch(4)
-        .shuffle(4);
-    await model.fitDataset(xyDataset, {
-        epochs: 10,
-        callbacks: {onEpochEnd: (epoch, logs) => console.log("Epoch " + epoch + ": " + logs.loss)}
+function reset() {
+    console.log("game reset");
+    t = 0;
+    for(let obj of gameObjects)
+        obj.remove();
+    player = new Player(0, 0, 5, 5, {
+        red: '0',
+        green: '255',
+        blue: '255'
     });
-    console.log("Done Training!");
+    numGenerating = 0;
+    pHealthBar = new HealthBar(2, 2, 30, 5, player);
+    gameObjects = [player, pHealthBar];
+}
+
+function step(action) {
+    player.set_action(action);
+    t++;
+    if(t%300 == 0) {
+        numGenerating += 0.2;
+        let [w, h, dx, dy, alpha] = tf.matMul(create_multiplier(), tf.tensor(hitFeatures)).dataSync();
+        for(let j = 0; j < numGenerating; j++) {
+            const enemy = new Enemy(Math.random() > 0.5? 0 : 100 - w, Math.random() * 100, w, h, dx, dy, alpha);
+            Enemy.add(enemy);
+        }
+    }
+    if(agentPlaying) {
+        player.set_action(model.sampleAction(get_state()));
+    }
+    for (i = 0; i < gameObjects.length; i++) {
+        const obj = gameObjects[i];
+        obj.update(false);
+        for (let j = i + 1; j < gameObjects.length; j++) {
+            const obj2 = gameObjects[j];
+            if (obj.x + obj.w >= obj2.x && obj.x <= obj2.x + obj2.w && obj.y + obj.h >= obj2.y && obj.y <= obj2.y + obj2.h) {
+                obj.collide(obj2);
+                obj2.collide(obj);
+            }
+        }
+    }
+
+    return [get_state(), reward(), player.health <= 0]
+}
+
+function playOne() {
+    reset();
+    let state = get_state();
+    let done = false;
+    let iterations = 0;
+    let reward;
+    let totalReward = 0;
+
+    while(!done && iterations < 2000) {
+        let action = model.sampleAction(state);
+        let prev_state = state;
+        [state, reward, done] = step(action);
+        totalReward += reward;
+
+        model.addExperience(prev_state, action, reward, state, done);
+        model.train(tmodel);
+
+        if(done)
+            reward = -200;
+        iterations++;
+        if(iterations % copyPeriod == 0) {
+            model.copyTo(tmodel);
+        }
+    }
+
+    return totalReward;
 }
 
 function animate() {
@@ -593,11 +640,7 @@ function animate() {
         }
     }
     if(agentPlaying) {
-        const output = model.predict(tf.tensor([get_state()])).dataSync();
-        player.set_action(tf.tensor(output.slice(0, 4)).argMax().dataSync()[0]);
-        console.log(output[4]);
-        if(output[4] > 0.25)
-            player.shoot();
+        player.set_action(model.sampleAction(get_state()));
     }
     for (i = 0; i < gameObjects.length; i++) {
         const obj = gameObjects[i];
@@ -610,24 +653,9 @@ function animate() {
             }
         }
     }
-    if(player.action >= 0) {
-        xs.push(get_state());
-        let y = [0, 0, 0, 0, shooting? 1: 0];
-        y[player.action] = 1;
-        ys.push(y);
-    }
     
     if(player.health < 0) {
-        console.log("game over");
-        for(let obj of gameObjects)
-            obj.remove();
-        player = new Player(0, 0, 5, 5, {
-            red: '0',
-            green: '255',
-            blue: '255'
-        });
-        pHealthBar = new HealthBar(2, 2, 30, 5, player);
-        gameObjects = [player, pHealthBar];
+        reset();
     }
 
 }
