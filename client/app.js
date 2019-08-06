@@ -320,9 +320,6 @@ const copyPeriod = 50;
 let running = true;
 let agentPlaying = false;
 
-const model = new DQN(INPUT_NODES, HIDDEN_LAYERS, NUM_OUTPUT_CLASSES);
-const tmodel = new DQN(INPUT_NODES, HIDDEN_LAYERS, NUM_OUTPUT_CLASSES);
-
 let shooting = false;
 let player = new Player(Math.random() * 95, Math.random() * 95, 5, 5, {
     red: '0',
