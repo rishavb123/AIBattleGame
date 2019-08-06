@@ -312,10 +312,8 @@ const UP = 2;
 const DOWN = 3;
 
 const INPUT_NODES = 103;
-const HIDDEN_LAYERS = [20];
 const NUM_OUTPUT_CLASSES = 4;
 
-const copyPeriod = 50;
 
 let running = true;
 let agentPlaying = false;
