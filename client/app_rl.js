@@ -232,6 +232,155 @@ class Enemy extends GameObject{
 
 }
 
+
+class DenseLayer {
+    constructor(M1, M2, f=tf.tanh) {
+        this.M1 = M1;
+        this.M2 = M2;
+        this.W = tf.variable(tf.randomNormal([M1, M2]));
+        this.b = tf.variable(tf.zeros([M2], 'float32'));
+        this.f = f;
+    }
+
+    getParams() {
+        return [this.W, this.b];
+    }
+
+    setParams(params) {
+        this.W = params[0].clone();
+        this.b = params[1].clone();
+        return this;
+    }
+
+    clone() {
+        return new DenseLayer(this.M1, this.M2).setParams(this.getParams());
+    }
+
+    forward(X) {
+        return this.f(tf.add(tf.matMul(X, this.W), this.b));
+    }
+}
+
+class DQN {
+
+    constructor(inputNodes, hiddenLayers, outputNodes, gamma=0.9, eps=0.1, minExperience=100, maxExperience=1000, batchSize=32) {
+        this.layers = [];
+        this.gamma = gamma;
+        this.eps = eps;
+        this.minExperience = minExperience;
+        this.maxExperience = maxExperience;
+        this.batchSize = batchSize;
+
+        let M1 = inputNodes;
+        for(let M2 of hiddenLayers) {
+            this.layers.push(new DenseLayer(M1, M2));
+            M1 = M2;
+        }
+        this.layers.push(new DenseLayer(M1, outputNodes));
+        this.optimizer = tf.train.adam();
+        this.experience = {
+            s: [],
+            a: [],
+            r: [],
+            s2: [],
+            done: []
+        };
+    }
+
+    predict(X) {
+        let Z = X;
+        for(let layer of this.layers) {
+            Z = layer.forward(Z);
+        }
+        return Z;
+    }
+
+    addExperience(s, a, r, s2, done) {
+        if(this.experience.s.length >= this.maxExperience) {
+            this.experience.s.shift();
+            this.experience.a.shift();
+            this.experience.r.shift();
+            this.experience.s2.shift();
+            this.experience.done.shift();
+        }
+        this.experience.s.push(s);
+        this.experience.a.push(a);
+        this.experience.r.push(r);
+        this.experience.s2.push(s2);
+        this.experience.done.push(done);
+    }
+
+    train(targetNetwork) {
+        if(this.experience.s.length < this.minExperience)
+            return;
+
+        let idx = [];
+        let states = [];
+        let actions = [];
+        let rewards = [];
+        let next_states = [];
+        let dones = [];
+        for(let i = 0; i < this.batchSize; i++) {
+            let index = Math.floor(Math.random() * this.experience.s.length);
+            while(index in idx)
+                index = Math.floor(Math.random() * this.experience.s.length);
+            idx.push(index);
+            states.push(this.experience.s[index]);
+            actions.push(this.experience.a[index]);
+            rewards.push(this.experience.r[index]);
+            next_states.push(this.experience.s2[index]);
+            dones.push(this.experience.done[index]);
+        }
+
+        let next_Q_arr = targetNetwork.predict(tf.tensor(next_states)).dataSync();
+        let next_Q = [];
+        for(let i in next_Q_arr)
+            next_Q.push(next_Q_arr[i][actions[i]]);
+        
+        next_Q = tf.tensor(next_Q);
+
+        let targets = [];
+        
+        for(let i = 0; i < rewards.length; i++) {
+            if(dones[i])
+                targets.push(rewards[i]);
+            else
+                targets.push(rewards[i] + this.gamma * next_Q[i]);
+        }
+        this.optimizer.minimize(() => tf.losses.meanSquaredError(targets, tf.max(this.predict(states), 1)), false, this.getParams());
+
+    }
+
+    getParams() {
+        let params = [];
+        for(let i = 0; i < this.layers.length; i++)
+            params = params.concat(this.layers[i].getParams());
+    }
+
+    copyTo(toNetwork) {
+        for(let i = 0; i < this.layers.length; i++)
+            toNetwork.layers[i].setParams(this.layers[i].getParams());
+    }
+
+    sampleAction(x) {
+        if(x[0] < -0.05)
+            return RIGHT;
+        else if(x[0] > 1)
+            return LEFT;
+        else if(x[1] < -0.05)
+            return DOWN;
+        else if(x[1] > 1)
+            return UP;
+        else if(Math.random() < this.eps)
+            return Math.floor(Math.random() * 4);
+        else 
+            return tf.argMax(this.predict(tf.tensor([x])), 1).dataSync()[0]
+    }
+
+}
+
+
+
 Enemy.minSpeed = 0.1;
 Enemy.maxSpeed = 2;
 
@@ -409,7 +558,7 @@ function randGauss() {
     while(v === 0) v = Math.random();
     return Math.sqrt( -2.0 * Math.log( u ) ) * Math.cos( 2.0 * Math.PI * v );
 }
-
+let trained = false;
 function train(N = 500) {
     totalrewards = [];
     for(let n = 1; n <= N; n++) {
@@ -495,7 +644,11 @@ function playOne() {
 
     return totalReward;
 }
-
+let state = get_state();
+let done = false;
+let iterations = 0;
+let reward;
+let totalReward = 0;
 function animate() {
     t++;
     
@@ -523,6 +676,21 @@ function animate() {
                 obj2.collide(obj);
             }
         }
+    }
+    if(!trained) {
+        let prev_state = state;
+        let action = player.action;
+        [state, reward, done] = [get_state(), get_reward(), player.health <= 0]
+
+        model.addExperience(prev_state, action, reward, state, done);
+        model.train(tmodel);
+    }
+
+    if(done)
+        reward = -200;
+    iterations++;
+    if(iterations % copyPeriod == 0) {
+        model.copyTo(tmodel);
     }
     if(player.health <= 0) {
         reset();
