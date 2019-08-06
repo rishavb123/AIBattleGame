@@ -21,3 +21,36 @@ enemy action 1 (UP)
 enemy action 2 (RIGHT)
 enemy action 3 (DOWN)
 enemy action 4 (SHOOT)
+
+
+function create_model() {
+    const model = tf.sequential();
+
+    model.add(tf.layers.dense({
+        inputDim: INPUT_NODES,
+        units: INPUT_NODES,
+        kernelInitializer: 'varianceScaling',
+        activation: 'tanh'
+    }));
+
+    for(let NUM_OF_HIDDEN_NODES of HIDDEN_LAYERS)
+        model.add(tf.layers.dense({
+            units: NUM_OF_HIDDEN_NODES,
+            kernelInitializer: 'varianceScaling',
+            activation: 'relu'
+        }));
+
+    model.add(tf.layers.dense({
+        units: NUM_OUTPUT_CLASSES,
+        kernelInitializer: 'varianceScaling',
+        activation: 'softmax'
+    }));
+
+    const optimizer = tf.train.adam();
+    model.compile({
+        optimizer: optimizer,
+        loss: 'categoricalCrossentropy',
+        metrics: ['accuracy']
+    });
+    return model;
+}
