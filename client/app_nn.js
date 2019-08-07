@@ -1,6 +1,14 @@
 const c = document.getElementById("application");
 const ctx = c.getContext('2d');
 
+let regex = /[?&]([^=#]+)=([^&#]*)/g,
+    url = window.location.href,
+    params = {},
+    match;
+while(match = regex.exec(url)) {
+    params[match[1]] = match[2];
+}
+
 if(window.innerWidth > window.innerHeight) {
     c.width = window.innerHeight;
     c.height = window.innerHeight;
@@ -218,7 +226,7 @@ class Enemy extends GameObject{
     }
 
     get_normalized_features() {
-        return [this.w / 100, this.h / 100, this.maxDx / 100, this.maxDy / 100, this.alpha, this.side];
+        return [this.w / 100, this.h / 100, this.maxDx / 100, this.maxDy / 100];
     }
 
     collide(obj) {
@@ -303,8 +311,20 @@ window.addEventListener("keyup", async (e) => {
             running = !running;
             if(running) animate();                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  
             break;
+        case 82:
+            reset(false);
+            break;
+        case 83:
+            await saveModel(prompt("Name of Model: "));
+            break;
+        case 76:
+            await loadModel(prompt("Name of Model: "));
+            break;
         case 84:
-            train(100);
+            await train();
+            break;
+        case 67:
+            clearStorage();
             break;
     }
 });
@@ -314,7 +334,8 @@ const RIGHT = 1;
 const UP = 2;
 const DOWN = 3;
 
-const INPUT_NODES = 123;
+const INPUT_NODES = 50;
+const HIDDEN_LAYERS = [40, 30, 20];
 const NUM_OUTPUT_CLASSES = 4;
 
 let running = true;
@@ -327,18 +348,21 @@ let player = new Player(Math.random() * 95, Math.random() * 95, 5, 5, {
     blue: '255'
 });
 
-let env = {};
-env.getNumStates = () => INPUT_NODES;
-env.getMaxNumActions = () => NUM_OUTPUT_CLASSES;
-let spec = { 
-    alpha: 0.01,
-    num_hidden_units: 70
-};
-let agent = new RL.DQNAgent(env, spec);
+let score = parseFloat(localStorage.score) || 0;
+let numGames = parseInt(localStorage.numGames) || 0;
+
+let enemySpawn = params.enemies !== 'false';
+let counts = params.counts !== 'false';
+let aiControl = parseFloat(params.control) || 0.9 ;
+if(params.control === '0')
+    aiControl = 0;
+let controlPeriod = Math.round((1 - aiControl) * 100 + 1);
+if(params.model_name)
+    loadModel(params.model_name);
 
 let t = 0;
 
-const maxEnemies = 10;
+const maxEnemies = 5;
 
 Bullet.defaultBullet = new Bullet(-1, -1, 0, 0, 0, 0);
 Enemy.defaultEnemy = new Enemy(-1, -1, 0, 0, 0, 0, 0);
@@ -357,9 +381,16 @@ Enemy.get = (index) => {
 let pHealthBar = new HealthBar(2, 2, 30, 5, player);
 let gameObjects = [player, pHealthBar];
 let enemies = [];
-let hitFeatures = [[5, 5, 0.8, 0.8, 0.8, 0]];
+let hitFeatures = localStorage.hitFeatures? JSON.parse(localStorage.hitFeatures): [[5, 5, 0.8, 0.8, 0.8, 0]];
 let i = 0;
 let numGenerating = 0;
+
+let model = create_model();
+let shootingModel = create_shooting_model();
+
+let xs = [];
+let ys = [];
+let shootingYs = [];
 
 function remove(obj) {
     gameObjects.splice(gameObjects.indexOf(obj), 1);
@@ -373,25 +404,79 @@ function add(obj) {
 }
 
 function get_state() {
-    let state = [player.x / 100, player.y / 100, player.health / 100];
-    for(let i = 0; i < 5; i++)
-    {
-        let bullet = player.getBullet(i);
-        state.push(bullet.x / 100, bullet.y / 100, bullet.dx / 100, bullet.dy / 100);
-    }
+    let state = [player.x / 100, player.y / 100, player.dx / 100, player.dy / 100, player.health / 100];
     for(let i = 0; i < maxEnemies; i++)
     {
         let enemy = Enemy.get(i);
         state.push(enemy.x / 100, enemy.y / 100, enemy.dx / 100, enemy.dy / 100, enemy.health / 100);
         let arr = enemy.get_normalized_features();
-        arr.pop(); arr.pop();
         state = state.concat(arr);
     }
     return state;
 }
 
-function get_reward() {
-    return player.health / 100;
+function create_model() {
+    const model = tf.sequential();
+
+    model.add(tf.layers.dense({
+        inputDim: INPUT_NODES,
+        units: INPUT_NODES,
+        kernelInitializer: 'varianceScaling',
+        activation: 'tanh'
+    }));
+
+    for(let NUM_OF_HIDDEN_NODES of HIDDEN_LAYERS)
+        model.add(tf.layers.dense({
+            units: NUM_OF_HIDDEN_NODES,
+            kernelInitializer: 'varianceScaling',
+            activation: 'relu'
+        }));
+
+    model.add(tf.layers.dense({
+        units: NUM_OUTPUT_CLASSES,
+        kernelInitializer: 'varianceScaling',
+        activation: 'softmax'
+    }));
+
+    const optimizer = tf.train.adam();
+    model.compile({
+        optimizer: optimizer,
+        loss: 'categoricalCrossentropy',
+        metrics: ['accuracy']
+    });
+    return model;
+}
+
+function create_shooting_model() {
+    const model = tf.sequential();
+
+    model.add(tf.layers.dense({
+        inputDim: INPUT_NODES,
+        units: INPUT_NODES,
+        kernelInitializer: 'varianceScaling',
+        activation: 'tanh'
+    }));
+
+    for(let NUM_OF_HIDDEN_NODES of HIDDEN_LAYERS)
+        model.add(tf.layers.dense({
+            units: NUM_OF_HIDDEN_NODES,
+            kernelInitializer: 'varianceScaling',
+            activation: 'tanh'
+        }));
+
+    model.add(tf.layers.dense({
+        units: 1,
+        kernelInitializer: 'varianceScaling',
+        activation: 'sigmoid'
+    }));
+
+    const optimizer = tf.train.adam();
+    model.compile({
+        optimizer: optimizer,
+        loss: 'meanSquaredError',
+        metrics: ['accuracy']
+    });
+    return model;
 }
 
 function create_multiplier() {
@@ -410,6 +495,16 @@ function create_multiplier() {
     return tf.tensor([multiplierArr]);
 }
 
+function clearStorage() {
+    reset();
+    score = 0;
+    numGames = 0;
+    hitFeatures = [[5, 5, 0.8, 0.8, 0.8, 0]];
+    localStorage.score = 0;
+    localStorage.numGames = 0;
+    localStorage.hitFeatures = JSON.stringify(hitFeatures);
+}
+
 function randGauss() {
     let u = 0, v = 0;
     while(u === 0) u = Math.random();
@@ -417,21 +512,92 @@ function randGauss() {
     return Math.sqrt( -2.0 * Math.log( u ) ) * Math.cos( 2.0 * Math.PI * v );
 }
 
-function train(N = 500) {
-    totalRewards = [];
-    for(let n = 1; n <= N; n++) {
-        totalReward = playOne();
-        totalRewards.push(totalReward);
-        if(n%10 == 0) {
-            console.log("episode:", n, "\n\ttotal reward:", totalReward, "\n\taverage total reward:", tf.tensor(totalRewards).mean().dataSync()[0], "\n\ttotal rewards:", totalRewards);
-            totalRewards = [];
+async function train(EPOCH = 8) {
+
+    console.log("");
+    console.log("");    
+    console.log("Training . . .");
+    console.log("");
+    console.log("Preparing Data . . .");
+    const xDataset = tf.data.array(xs);
+    const yDataset = tf.data.array(ys);
+    const shootingDataset = tf.data.array(shootingYs);
+
+    const xyDataset = tf.data.zip({ xs: xDataset, ys: yDataset }).batch(4).shuffle(4);
+    const xshootingDataset = tf.data.zip({ xs: xDataset, ys: shootingDataset }).batch(4).shuffle(4);
+
+    console.log("Done Preparing Data");
+    console.log("");
+
+    console.log("Training Main Model . . .");
+    const history = await model.fitDataset(xyDataset, {
+        epochs: EPOCH,
+        callbacks: {
+            onEpochEnd: (epoch, logs) => console.log("Epoch:", epoch, "\n\tloss:", logs.loss, "\n\taccuracy:", logs.acc)
         }
-    }
-    reset();
+    });
+    console.log("history: ", history);
+    console.log("Done Training Main Model");
+    console.log("");
+
+    console.log("Training Shooting Model . . .");
+    const shootingHistory = await shootingModel.fitDataset(xshootingDataset, {
+        epochs: EPOCH,
+        callbacks: {
+            onEpochEnd: (epoch, logs) => console.log("Epoch:", epoch, "\n\tloss:", logs.loss, "\n\taccuracy:", logs.acc)
+        }
+    });
+    console.log("history: ", shootingHistory);
+    console.log("Done Training Main Model");
+    console.log("");
+
+    console.log("Removing Old Data . . .");
+    xs = [];
+    ys = [];
+    shootingYs = [];
+    console.log("Done Removing Old Data");
+    console.log("");
+
+    console.log("Done Training");
+    console.log("");
+    console.log("");
+
     alert("Done Training!");
 }
 
-function reset() {
+async function saveModel(name) {
+    console.log("Saving Model . . .");
+    await model.save(`localstorage://${name}`);
+    await shootingModel.save(`localstorage://${name}-shooting`);
+    console.log("Done Saving Model");
+    console.log("");
+}
+
+async function loadModel(name) {
+    console.log("Loading Model . . .");
+    model = await tf.loadLayersModel(`localstorage://${name}`);
+    shootingModel = await tf.loadLayersModel(`localstorage://${name}-shooting`);
+    const optimizer = tf.train.adam();
+    model.compile({
+        optimizer: optimizer,
+        loss: 'categoricalCrossentropy',
+        metrics: ['accuracy']
+    });
+    const shootingOptimizer = tf.train.adam();
+    shootingModel.compile({
+        optimizer: shootingOptimizer,
+        loss: 'meanSquaredError',
+        metrics: ['accuracy']
+    });
+    console.log("Done Loading Model");
+    console.log("");
+}
+
+function reset(updateScore = true) {
+    if(enemySpawn && updateScore)
+        score = (score * numGames + t) / (++numGames);
+    localStorage.score = score;
+    localStorage.numGames = numGames;
     t = 0;
     for(let obj of gameObjects)
         obj.remove();
@@ -445,71 +611,48 @@ function reset() {
     gameObjects = [player, pHealthBar];
 }
 
-function step(action) {
-    player.set_action(action);
-    for(let k = 0; k < 1; k++) {
-        t++;
-        if(t%300 == 0) {
-            numGenerating += 0.2;
-            let [w, h, dx, dy, alpha, side] = tf.matMul(create_multiplier(), tf.tensor(hitFeatures)).dataSync();
-            for(let j = 0; j < numGenerating; j++) {
-                const enemy = new Enemy(Math.random() > 0.3? (Math.random() > 0.5? 0 : 100 - w): (side < 0? 0 : 100 - w), Math.random() * 100, w, h, dx, dy, alpha);
-                Enemy.add(enemy);
-            }
-        }
-        for (i = 0; i < gameObjects.length; i++) {
-            const obj = gameObjects[i];
-            obj.update(false);
-            for (let j = i + 1; j < gameObjects.length; j++) {
-                const obj2 = gameObjects[j];
-                if (obj.x + obj.w >= obj2.x && obj.x <= obj2.x + obj2.w && obj.y + obj.h >= obj2.y && obj.y <= obj2.y + obj2.h) {
-                    obj.collide(obj2);
-                    obj2.collide(obj);
-                }
-            }
-        }
-    }
-    return [get_state(), get_reward(), player.health <= 0];
-}
-
-function playOne() {
-    reset();
-    let iterations = 0;
-    let totalReward = 0;
-    let done = false;
-    let reward;
-    let state = get_state();
-
-    while(!done && iterations < 2000) {
-        let action = agent.act(state);
-        [state, reward, done] = step(action);
-        totalReward += reward;
-
-        if(done)
-            reward = -10;
-        iterations++;
-        agent.learn(reward);
-    }
-
-    return totalReward;
-}
-
 function animate() {
-    t++;
-    
     if(running)
         requestAnimationFrame(animate);
     ctx.clearRect(0, 0, c.width, c.height);
-    if(t%300 == 0) {
-        numGenerating += 0.2;
-        let [w, h, dx, dy, alpha] = tf.matMul(create_multiplier(), tf.tensor(hitFeatures)).dataSync();
-        for(let j = 0; j < numGenerating; j++) {
-            const enemy = new Enemy(Math.random() > 0.5? 0 : 100 - w, Math.random() * 100, w, h, dx, dy, alpha);
-            Enemy.add(enemy);
+    
+    if(player.action != -1) {
+        t++;
+        xs.push(get_state());
+        ys.push(Array.from(tf.oneHot(player.action, NUM_OUTPUT_CLASSES).dataSync()));
+        shootingYs.push(shooting? [1]: [0]);
+
+        if(t%150 == 0 && enemySpawn) {
+            numGenerating += 0.2;
+            let [w, h, dx, dy, alpha] = tf.matMul(create_multiplier(), tf.tensor(hitFeatures)).dataSync();
+            for(let j = 0; j < numGenerating; j++) {
+                const enemy = new Enemy(Math.random() > 0.5? 0 : 100 - w, Math.random() * 100, w, h, dx, dy, alpha);
+                Enemy.add(enemy);
+            }
         }
     }
-    if(agentPlaying && t%10 == 0) {
-        player.set_action(agent.act(get_state()));
+
+    if(agentPlaying && t%controlPeriod == 0) {
+        let x = get_state();
+        let stateTensor = tf.tensor([x]);
+        if(x[0] < 0)
+            player.set_action(RIGHT);
+        else if(x[0] > 0.95)
+            player.set_action(LEFT);
+        else if(x[1] < 0)
+            player.set_action(DOWN);
+        else if(x[1] > 0.95)
+            player.set_action(UP);
+        else {
+            player.set_action(tf.argMax(model.predict(stateTensor), 1).dataSync()[0]);
+        }
+        if(shootingModel.predict(stateTensor).dataSync()[0] > 0.6) {
+            player.shoot();
+        }
+        if(enemySpawn && counts) {
+            score += 0.01;
+            localStorage.score = score;
+        }
     }
     for (i = 0; i < gameObjects.length; i++) {
         const obj = gameObjects[i];
@@ -522,8 +665,13 @@ function animate() {
             }
         }
     }
+    localStorage.hitFeatures = JSON.stringify(hitFeatures);
+    ctx.fillStyle = 'white';
+    ctx.font = "20px Courier New";
+    let s = "Score: " + Math.round(score * 1000) / 1000;
+    ctx.fillText(s, c.width - s.length * 14, 30);
     if(player.health <= 0) {
-        reset();
+        reset(counts);
     }
 
 }

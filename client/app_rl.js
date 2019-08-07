@@ -217,6 +217,10 @@ class Enemy extends GameObject{
         return [this.w, this.h, this.maxDx, this.maxDy, this.alpha, this.side];
     }
 
+    get_normalized_features() {
+        return [this.w / 100, this.h / 100, this.maxDx / 100, this.maxDy / 100, this.alpha, this.side];
+    }
+
     collide(obj) {
         if (obj instanceof Bullet) {
             obj.sender.health += obj.sender.health < 90? 10 : 0;
@@ -437,7 +441,6 @@ window.addEventListener("keydown", (e) => {
 });
 
 window.addEventListener("keyup", async (e) => {
-    console.log(e.keyCode);
     switch(e.keyCode) {
         case 32:
             shooting = false;
@@ -450,7 +453,7 @@ window.addEventListener("keyup", async (e) => {
             if(running) animate();                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  
             break;
         case 84:
-            train(5000);
+            train(100);
             break;
     }
 });
@@ -460,7 +463,7 @@ const RIGHT = 1;
 const UP = 2;
 const DOWN = 3;
 
-const INPUT_NODES = 103;
+const INPUT_NODES = 123;
 const HIDDEN_LAYERS = [20];
 const NUM_OUTPUT_CLASSES = 4;
 
@@ -524,9 +527,9 @@ function get_state() {
     for(let i = 0; i < maxEnemies; i++)
     {
         let enemy = Enemy.get(i);
-        state.push(enemy.x, enemy.y, enemy.health);
-        let arr = enemy.get_features();
-        arr.pop();
+        state.push(enemy.x / 100, enemy.y / 100, enemy.dx / 100, enemy.dy / 100, enemy.health / 100);
+        let arr = enemy.get_normalized_features();
+        arr.pop(); arr.pop();
         state = state.concat(arr);
     }
     return state;
@@ -576,7 +579,6 @@ function train(N = 500) {
 }
 
 function reset() {
-    console.log("game reset");
     t = 0;
     for(let obj of gameObjects)
         obj.remove();
@@ -592,7 +594,7 @@ function reset() {
 
 function step(action) {
     player.set_action(action);
-    for(let k = 0; k < 40; k++) {
+    for(let k = 0; k < 1; k++) {
         t++;
         if(t%300 == 0) {
             numGenerating += 0.2;
