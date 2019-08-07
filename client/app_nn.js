@@ -300,6 +300,18 @@ window.addEventListener("keydown", (e) => {
 });
 
 window.addEventListener("keyup", async (e) => {
+    console.log(e.keyCode);
+    if(binding) {
+        bind(e.keyCode, prompt("Name of Model: "))
+    }
+    else if(e.keyCode in keyBindings) {
+        if(curAgent == keyBindings[e.keyCode])
+            agentPlaying = false;
+        else {
+            await loadModel(keyBindings[e.keyCode]);
+            agentPlaying = true;
+        }
+    }
     switch(e.keyCode) {
         case 32:
             shooting = false;
@@ -326,6 +338,12 @@ window.addEventListener("keyup", async (e) => {
         case 67:
             clearStorage();
             break;
+        case 66:
+            binding = true;
+            break;
+        case 27:
+            clearBindings();
+            break;
     }
 });
 
@@ -340,6 +358,8 @@ const NUM_OUTPUT_CLASSES = 4;
 
 let running = true;
 let agentPlaying = false;
+let binding = true;
+let curAgent = "default";
 
 let shooting = false;
 let player = new Player(Math.random() * 95, Math.random() * 95, 5, 5, {
@@ -347,6 +367,8 @@ let player = new Player(Math.random() * 95, Math.random() * 95, 5, 5, {
     green: '255',
     blue: '255'
 });
+
+let keyBindings = params.keyBindings? JSON.parse(params.keyBinding) || {};
 
 let score = parseFloat(localStorage.score) || 0;
 let numGames = parseInt(localStorage.numGames) || 0;
@@ -505,6 +527,16 @@ function clearStorage() {
     localStorage.hitFeatures = JSON.stringify(hitFeatures);
 }
 
+function bind(key, networkName) {
+    keyBindings[key] = networkName;
+    localStorage.keyBindings = JSON.stringify(keyBindings);
+}
+
+function clearBindings() {
+    keyBindings = {};
+    localStorage.keyBindings = null;
+}
+
 function randGauss() {
     let u = 0, v = 0;
     while(u === 0) u = Math.random();
@@ -514,7 +546,6 @@ function randGauss() {
 
 async function train(EPOCH = 8) {
 
-    console.log("");
     console.log("");    
     console.log("Training . . .");
     console.log("");
@@ -560,13 +591,13 @@ async function train(EPOCH = 8) {
 
     console.log("Done Training");
     console.log("");
-    console.log("");
 
     alert("Done Training!");
 }
 
 async function saveModel(name) {
     console.log("Saving Model . . .");
+    curAgent = name;
     await model.save(`localstorage://${name}`);
     await shootingModel.save(`localstorage://${name}-shooting`);
     console.log("Done Saving Model");
@@ -575,6 +606,7 @@ async function saveModel(name) {
 
 async function loadModel(name) {
     console.log("Loading Model . . .");
+    curAgent = name;
     model = await tf.loadLayersModel(`localstorage://${name}`);
     shootingModel = await tf.loadLayersModel(`localstorage://${name}-shooting`);
     const optimizer = tf.train.adam();
