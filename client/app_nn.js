@@ -352,7 +352,7 @@ let score = parseFloat(localStorage.score) || 0;
 let numGames = parseInt(localStorage.numGames) || 0;
 
 let enemySpawn = params.enemies !== 'false';
-let counts = params.counts !== 'false';
+let counts = params.training? (params.training !== 'true') : (params.counts !== 'false');
 let aiControl = parseFloat(params.control) || 0.9 ;
 if(params.control === '0')
     aiControl = 0;
