@@ -300,7 +300,6 @@ window.addEventListener("keydown", (e) => {
 });
 
 window.addEventListener("keyup", async (e) => {
-    console.log(e.keyCode);
     if(binding) {
         bind(e.keyCode, prompt("Name of Model: "));
     }
@@ -535,7 +534,7 @@ function bind(key, networkName) {
 
 function clearBindings() {
     keyBindings = {};
-    localStorage.keyBindings = null;
+    localStorage.keyBindings = "";
 }
 
 function randGauss() {
