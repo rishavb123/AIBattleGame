@@ -368,7 +368,7 @@ let player = new Player(Math.random() * 95, Math.random() * 95, 5, 5, {
     blue: '255'
 });
 
-let keyBindings = params.keyBindings? JSON.parse(params.keyBinding) || {};
+let keyBindings = params.keyBindings? JSON.parse(params.keyBinding): {};
 
 let score = parseFloat(localStorage.score) || 0;
 let numGames = parseInt(localStorage.numGames) || 0;
