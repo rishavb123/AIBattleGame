@@ -302,7 +302,7 @@ window.addEventListener("keydown", (e) => {
 window.addEventListener("keyup", async (e) => {
     console.log(e.keyCode);
     if(binding) {
-        bind(e.keyCode, prompt("Name of Model: "))
+        bind(e.keyCode, prompt("Name of Model: "));
     }
     else if(e.keyCode in keyBindings) {
         if(curAgent == keyBindings[e.keyCode])
@@ -358,7 +358,7 @@ const NUM_OUTPUT_CLASSES = 4;
 
 let running = true;
 let agentPlaying = false;
-let binding = true;
+let binding = false;
 let curAgent = "default";
 
 let shooting = false;
@@ -368,7 +368,7 @@ let player = new Player(Math.random() * 95, Math.random() * 95, 5, 5, {
     blue: '255'
 });
 
-let keyBindings = params.keyBindings? JSON.parse(params.keyBinding) : {};
+let keyBindings = localStorage.keyBindings? JSON.parse(localStorage.keyBindings) : {};
 
 let score = parseFloat(localStorage.score) || 0;
 let numGames = parseInt(localStorage.numGames) || 0;
@@ -530,6 +530,7 @@ function clearStorage() {
 function bind(key, networkName) {
     keyBindings[key] = networkName;
     localStorage.keyBindings = JSON.stringify(keyBindings);
+    binding = false;
 }
 
 function clearBindings() {
